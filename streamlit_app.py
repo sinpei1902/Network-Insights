@@ -1,7 +1,7 @@
 import streamlit as st
 from openai import AzureOpenAI
 
-st.title("💬 Hackathon Chatbot (GPT-5-Mini via PSA API Gateway)")
+st.title("💬 Network Insights Chatbot")
 
 # Load credentials
 endpoint = st.secrets["AZURE_OPENAI_ENDPOINT"]
