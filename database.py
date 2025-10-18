@@ -1,5 +1,6 @@
 import streamlit as st
-from supabase import create_client
+from supabase import create_client, Client
+import bcrypt
 
 url = st.secrets["supabase"]["url"]
 key = st.secrets["supabase"]["anon_key"]
@@ -11,10 +12,34 @@ def check_username_exists(username):
     return len(result.data) > 0
 
 def create_user(username, password):
-    result = supabase.table("users").insert({"username": username, "password_hash": password}).execute()
+    hashed_pw = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    result = supabase.table("users").insert({"username": username, "password_hash": hashed_pw}).execute()
+    supabase.table("user_details").insert({"username":username}).execute()
     return len(result.data) > 0
 
 def validate_user(username, entered_password):
-    result = supabase.table("users").select("*").eq("username", username).eq("password_hash", entered_password).execute()
-    return len(result.data) > 0
+    # Get the stored password hash for the username
+    result = supabase.table("users").select("password_hash").eq("username", username).execute()
+    if not result.data:
+        return False  # user not found
+    stored_hash = result.data[0]["password_hash"]
+    return bcrypt.checkpw(entered_password.encode("utf-8"), stored_hash.encode("utf-8"))
+
+def get_info(username):
+    result = supabase.table("user_details").select("*").eq("username", username).execute()
+    return result.data[0]
+
+def modify_role(username,new_role):
+    supabase.table("user_detailes").update({"role": new_role}).eq("username", username).execute()
+
+def modify_dept(username,new_dept):
+    supabase.table("user_detailes").update({"department": new_dept}).eq("username", username).execute()
+
+def modify_job(username,new_job):
+    supabase.table("user_detailes").update({"job_title": new_job}).eq("username", username).execute()
+
+
+
+
+
 
