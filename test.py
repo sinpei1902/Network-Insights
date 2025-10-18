@@ -4,6 +4,7 @@ import time
 import io
 import json
 import os
+import database
 
 # =====================
 # 🔐 CONFIGURATION
@@ -116,7 +117,10 @@ def download_exported_pdf(headers, download_url, output_path="dashboard_export.p
     with open(output_path, "wb") as f:
         f.write(pdf_data.content)
 
+    database.add_file_to_db(st.session_state["username"],output_path)
+
     print(f"🎉 Report successfully saved as {output_path}")
+    
 
 
 def app(filters=None):
@@ -129,7 +133,7 @@ def app(filters=None):
     download_exported_pdf(headers, download_url)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__": # only runs when called directly
     # Run export with or without filters
     use_filters = True  # change to False if you want full report export
     app(filters=DYNAMIC_FILTERS if use_filters else None)

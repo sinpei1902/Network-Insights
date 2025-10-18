@@ -1,6 +1,7 @@
 import streamlit as st
 from supabase import create_client, Client
 import bcrypt
+import os
 
 url = st.secrets["supabase"]["url"]
 key = st.secrets["supabase"]["anon_key"]
@@ -37,6 +38,22 @@ def modify_dept(username,new_dept):
 
 def modify_job(username,new_job):
     supabase.table("user_detailes").update({"job_title": new_job}).eq("username", username).execute()
+
+# File management
+
+def add_file_to_db(username, output_path):
+    #1. upload to supabase storage
+    storage_path = f"{username}/{os.path.basename(output_path)}"
+    with open(output_path, "rb") as f:
+        supabase.storage.from_("pdfs").upload(storage_path, f)
+
+    #2. save file path in database
+    supabase.table("user_files").insert({
+        "username": username,
+        "file_name": os.path.basename(output_path),
+        "file_path": storage_path
+    }).execute()
+
 
 
 
