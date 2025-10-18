@@ -27,7 +27,12 @@ def logIn():
                 st.rerun()
             else:
                 st.error("Invalid login details.")
-        
+        if st.button("quick login - wenxi"):
+            st.session_state["username"] = "wenxi"
+            st.rerun()
+        if st.button("quick login - sinpei"):
+            st.session_state["username"] = "sinpei"
+            st.rerun()
     
     elif choice == "Sign Up":
         st.write("Create a new account.")
@@ -45,7 +50,12 @@ def logIn():
                 st.error("Please fill all fields.")
 
 def loggedIn():
-    st.write("Welcome, "+ st.session_state["username"])
+    username = st.session_state["username"]
+    st.write("Welcome, "+ username)
+    with st.expander("User Details"):
+        st.write("Role: " + database.get_info(username)["role"])
+        st.write("Department: " + str(database.get_info(username)["department"]))
+        st.write("Job Title: " + str(database.get_info(username)["job_title"]))
     if st.button("Logout"):
         st.session_state["username"] = None
         st.success("Logging out...")
