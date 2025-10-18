@@ -5,30 +5,41 @@ This script connects to a Power BI Embedded workspace using
 Service Principal authentication, fetches live data, and generates
 a professional business report with GPT.
 """
-
 import requests
 import pandas as pd
 import json
 import os
-from openai import OpenAI
+import streamlit as st
+from openai import AzureOpenAI
 
 def app():
     # -------------------------------------------------
-    # 1️⃣ CONFIGURATION — ENTER YOUR CREDENTIALS HERE
+    # 1️⃣ LOAD CONFIGURATION FROM SECRETS
     # -------------------------------------------------
-    TENANT_ID = "27fa816c-95b5-4431-90d9-4d0ac1986f71"
-    CLIENT_ID = "d4513e50-29a7-4f57-a41f-68fae5006b67"
-    CLIENT_SECRET = "uF08Q~1sS-bSDi4bZe8JuOyPrIZglZ4zRqgKLbMp"
+    azure = st.secrets
+    pbi = st.secrets["powerbi"]
 
-    WORKSPACE_ID = "41675240-7b6e-4163-a0ed-52b5c3b13e01"
-    REPORT_ID = "06bdda3d-459c-4632-8784-d43e6b208aab"
+    # ===== Azure OpenAI Setup =====
+    AZURE_OPENAI_ENDPOINT = azure["AZURE_OPENAI_ENDPOINT"]
+    AZURE_OPENAI_KEY = azure["AZURE_OPENAI_KEY"]
+    AZURE_OPENAI_DEPLOYMENT = azure["AZURE_OPENAI_DEPLOYMENT"]
 
-    OPENAI_API_KEY = "YOUR_OPENAI_API_KEY_HERE"
-    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
-    client = OpenAI()
+    # ===== Power BI Setup =====
+    CLIENT_ID = pbi["client_id"]
+    CLIENT_SECRET = pbi["client_secret"]
+    TENANT_ID = pbi["tenant_id"]
+    WORKSPACE_ID = pbi["workspace_id"]
+    REPORT_ID = pbi["report_id"]
+
+    # Configure Azure OpenAI client
+    client = AzureOpenAI(
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+        api_key=AZURE_OPENAI_KEY,
+        api_version="2024-02-15-preview"  # check your Azure deployment’s API version
+    )
 
     # -------------------------------------------------
-    # 2️⃣ AUTHENTICATE TO MICROSOFT (Get Access Token)
+    # 2️⃣ AUTHENTICATE TO MICROSOFT (Power BI)
     # -------------------------------------------------
     token_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
     token_data = {
@@ -42,30 +53,27 @@ def app():
     access_token = token_response.json().get("access_token")
 
     if not access_token:
-        raise Exception("Failed to authenticate with Azure AD. Check credentials.")
+        raise Exception("❌ Failed to authenticate with Azure AD. Check credentials.")
 
     headers = {"Authorization": f"Bearer {access_token}"}
-
-    print("✅ Successfully authenticated with Power BI Service")
+    st.success("✅ Successfully authenticated with Power BI Service")
 
     # -------------------------------------------------
-    # 3️⃣ FETCH DATASETS AND TABLES
+    # 3️⃣ FETCH DATASETS
     # -------------------------------------------------
     datasets_url = f"https://api.powerbi.com/v1.0/myorg/groups/{WORKSPACE_ID}/datasets"
     datasets_resp = requests.get(datasets_url, headers=headers).json()
 
-    print("\n📊 Available Datasets:")
-    print(json.dumps(datasets_resp, indent=2))
+    st.write("📊 **Available Datasets:**")
+    st.json(datasets_resp)
 
-    # Extract one dataset ID (for demonstration)
+    # Use the first dataset for demo
     dataset_id = datasets_resp["value"][0]["id"]
 
     # -------------------------------------------------
-    # 4️⃣ QUERY A TABLE OR METRICS (using DAX query)
+    # 4️⃣ RUN DAX QUERY
     # -------------------------------------------------
     query_url = f"https://api.powerbi.com/v1.0/myorg/groups/{WORKSPACE_ID}/datasets/{dataset_id}/executeQueries"
-
-    # Example DAX query (replace with your actual table or measure names)
     query_body = {
         "queries": [
             {
@@ -86,20 +94,19 @@ def app():
     data_resp = requests.post(query_url, headers=headers, json=query_body)
     data_json = data_resp.json()
 
-    # Convert to DataFrame if successful
     if "results" in data_json:
         table = data_json["results"][0]["tables"][0]
         df = pd.DataFrame(table["rows"])
     else:
-        print("⚠️ Could not query dataset, showing structure:")
-        print(json.dumps(data_json, indent=2))
+        st.warning("⚠️ Could not query dataset.")
+        st.json(data_json)
         df = pd.DataFrame()
 
-    print("\n✅ Data retrieved from Power BI:")
-    print(df.head())
+    st.write("✅ **Data retrieved from Power BI:**")
+    st.dataframe(df)
 
     # -------------------------------------------------
-    # 5️⃣ GENERATE BUSINESS REPORT USING OPENAI
+    # 5️⃣ GENERATE BUSINESS REPORT USING AZURE OPENAI
     # -------------------------------------------------
     prompt = f"""
     You are a business analyst reviewing network performance data
@@ -115,20 +122,20 @@ def app():
     """
 
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=AZURE_OPENAI_DEPLOYMENT,
         messages=[
             {"role": "system", "content": "You are an expert operations and data analyst."},
             {"role": "user", "content": prompt},
         ],
-        temperature=0.5,
+        temperature=1,
     )
 
     report = response.choices[0].message.content
 
-    print("\n📄 AI-GENERATED REPORT\n")
-    print(report)
+    st.subheader("📄 AI-Generated Business Report")
+    st.write(report)
 
     with open("powerbi_auto_report.txt", "w", encoding="utf-8") as f:
         f.write(report)
 
-    print("\nReport saved to powerbi_auto_report.txt ✅")
+    st.success("Report saved to powerbi_auto_report.txt ✅")
