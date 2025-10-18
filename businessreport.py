@@ -18,7 +18,6 @@ def app():
     # -------------------------------------------------
     azure = st.secrets
     pbi = st.secrets["powerbi"]
-
     # ===== Azure OpenAI Setup =====
     AZURE_OPENAI_ENDPOINT = azure["AZURE_OPENAI_ENDPOINT"]
     AZURE_OPENAI_KEY = azure["AZURE_OPENAI_KEY"]

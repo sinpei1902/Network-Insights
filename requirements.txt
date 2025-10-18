@@ -4,3 +4,5 @@ msal
 requests
 pandas
 numpy
+tabulate
+msal
