@@ -1,10 +1,18 @@
 import streamlit as st
-import chat, news, dashboard, businessreport
+import importlib
 
-dashboard.app()
-with st.container(border=True):
-    news.app()
-with st.container(border=True):
-    chat.bot()
-with st.container(border=True):
-    businessreport.app()
+PAGES = {
+    "1️⃣ Export Power BI Dashboard": "test",
+    "2️⃣ Generate Business Report": "businessreport",
+}
+
+st.sidebar.title("Navigation")
+page = st.sidebar.radio("Go to:", list(PAGES.keys()))
+
+module_name = PAGES[page]
+module = importlib.import_module(module_name)
+
+if hasattr(module, "app"):
+    module.app()
+else:
+    st.error(f"The module `{module_name}` has no `app()` function.")

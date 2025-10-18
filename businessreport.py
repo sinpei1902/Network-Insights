@@ -1,140 +1,92 @@
-"""
-Power BI REST API + OpenAI Integration
---------------------------------------
-This script connects to a Power BI Embedded workspace using
-Service Principal authentication, fetches live data, and generates
-a professional business report with GPT.
-"""
-import requests
-import pandas as pd
-import json
-import os
 import streamlit as st
+import pandas as pd
+import pdfplumber
+import re
 from openai import AzureOpenAI
 
+def extract_kpi_from_pdf(pdf_path: str):
+    """Safely extract KPI data from Power BI export PDF."""
+    data = {
+        "Month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep"],
+        "Port Time Savings (%)": [],
+        "Arrival Accuracy (%)": [],
+        "Bunker Savings (USD M)": [],
+        "Carbon Abatement (K tonnes)": [],
+    }
+
+    with pdfplumber.open(pdf_path) as pdf:
+        text = "".join(page.extract_text() or "" for page in pdf.pages)
+
+    def safe_extract(pattern, section):
+        try:
+            part = text.split(section)[1]
+            return re.findall(pattern, part)
+        except Exception:
+            return []
+
+    port = [int(x) for x in safe_extract(r"(\d{1,2})%", "Port Time Savings")]
+    acc = [int(x) for x in safe_extract(r"(\d{1,3})%", "Arrival Accuracy")]
+    bunk = [float(x) for x in safe_extract(r"(\d+\.\d+)M", "Bunker Savings")]
+    carb = [float(x) for x in safe_extract(r"(\d+\.\d+)", "Carbon Abatement")]
+
+    max_len = len(data["Month"])
+    for key, arr in {
+        "Port Time Savings (%)": port,
+        "Arrival Accuracy (%)": acc,
+        "Bunker Savings (USD M)": bunk,
+        "Carbon Abatement (K tonnes)": carb,
+    }.items():
+        data[key] = arr[:max_len] + [None] * (max_len - len(arr))
+
+    return pd.DataFrame(data)
+
+
 def app():
-    # -------------------------------------------------
-    # 1️⃣ LOAD CONFIGURATION FROM SECRETS
-    # -------------------------------------------------
-    azure = st.secrets
-    pbi = st.secrets["powerbi"]
-    # ===== Azure OpenAI Setup =====
-    AZURE_OPENAI_ENDPOINT = azure["AZURE_OPENAI_ENDPOINT"]
-    AZURE_OPENAI_KEY = azure["AZURE_OPENAI_KEY"]
-    AZURE_OPENAI_DEPLOYMENT = azure["AZURE_OPENAI_DEPLOYMENT"]
+    st.title("📊 Power BI → AI Business Report")
+    st.caption("Reads KPI data from the exported Power BI PDF and generates insights using Azure OpenAI.")
 
-    # ===== Power BI Setup =====
-    CLIENT_ID = pbi["client_id"]
-    CLIENT_SECRET = pbi["client_secret"]
-    TENANT_ID = pbi["tenant_id"]
-    WORKSPACE_ID = pbi["workspace_id"]
-    REPORT_ID = pbi["report_id"]
+    pdf_path = "dashboard_export.pdf"
+    st.info(f"Using Power BI export file: {pdf_path}")
 
-    # Configure Azure OpenAI client
+    try:
+        df = extract_kpi_from_pdf(pdf_path)
+        st.success("✅ Extracted KPI data:")
+        st.dataframe(df)
+    except Exception as e:
+        st.error(f"❌ Failed to read PDF: {e}")
+        return
+
+    # Azure setup
+    azure = st.secrets 
     client = AzureOpenAI(
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-        api_key=AZURE_OPENAI_KEY,
-        api_version="2024-02-15-preview"  # check your Azure deployment’s API version
+        azure_endpoint=azure["AZURE_OPENAI_ENDPOINT"],
+        api_key=azure["AZURE_OPENAI_KEY"],
+        api_version="2024-02-15-preview"
     )
 
-    # -------------------------------------------------
-    # 2️⃣ AUTHENTICATE TO MICROSOFT (Power BI)
-    # -------------------------------------------------
-    token_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
-    token_data = {
-        "grant_type": "client_credentials",
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "scope": "https://analysis.windows.net/powerbi/api/.default"
-    }
-
-    token_response = requests.post(token_url, data=token_data)
-    access_token = token_response.json().get("access_token")
-
-    if not access_token:
-        raise Exception("❌ Failed to authenticate with Azure AD. Check credentials.")
-
-    headers = {"Authorization": f"Bearer {access_token}"}
-    st.success("✅ Successfully authenticated with Power BI Service")
-
-    # -------------------------------------------------
-    # 3️⃣ FETCH DATASETS
-    # -------------------------------------------------
-    datasets_url = f"https://api.powerbi.com/v1.0/myorg/groups/{WORKSPACE_ID}/datasets"
-    datasets_resp = requests.get(datasets_url, headers=headers).json()
-
-    st.write("📊 **Available Datasets:**")
-    st.json(datasets_resp)
-
-    # Use the first dataset for demo
-    dataset_id = datasets_resp["value"][0]["id"]
-
-    # -------------------------------------------------
-    # 4️⃣ RUN DAX QUERY
-    # -------------------------------------------------
-    query_url = f"https://api.powerbi.com/v1.0/myorg/groups/{WORKSPACE_ID}/datasets/{dataset_id}/executeQueries"
-    query_body = {
-        "queries": [
-            {
-                "query": """
-                EVALUATE
-                SUMMARIZECOLUMNS(
-                    'Network'[Month],
-                    "PortTimeSavings", AVERAGE('Network'[PortTimeSavings]),
-                    "ArrivalAccuracy", AVERAGE('Network'[ArrivalAccuracy]),
-                    "BunkerSavingsUSD", SUM('Network'[BunkerSavingsUSD]),
-                    "CarbonAbatement", SUM('Network'[CarbonAbatement])
-                )
-                """
-            }
-        ]
-    }
-
-    data_resp = requests.post(query_url, headers=headers, json=query_body)
-    data_json = data_resp.json()
-
-    if "results" in data_json:
-        table = data_json["results"][0]["tables"][0]
-        df = pd.DataFrame(table["rows"])
-    else:
-        st.warning("⚠️ Could not query dataset.")
-        st.json(data_json)
-        df = pd.DataFrame()
-
-    st.write("✅ **Data retrieved from Power BI:**")
-    st.dataframe(df)
-
-    # -------------------------------------------------
-    # 5️⃣ GENERATE BUSINESS REPORT USING AZURE OPENAI
-    # -------------------------------------------------
+    # AI prompt
     prompt = f"""
-    You are a business analyst reviewing network performance data
-    fetched from Power BI. Generate a clear and actionable report.
+    You are a senior operations analyst. Using the following KPI data extracted from a Power BI report,
+    write a clear, actionable performance summary with insights and recommendations.
 
-    DATA SAMPLE:
+    Data:
     {df.to_markdown(index=False)}
-
-    TASK:
-    1. Summarize key performance insights.
-    2. Identify trends and problem areas.
-    3. Recommend strategies or operational improvements.
     """
 
+    st.subheader("🧠 Generating AI Report...")
     response = client.chat.completions.create(
-        model=AZURE_OPENAI_DEPLOYMENT,
+        model=azure["AZURE_OPENAI_DEPLOYMENT"],
         messages=[
-            {"role": "system", "content": "You are an expert operations and data analyst."},
+            {"role": "system", "content": "You are an expert operations analyst."},
             {"role": "user", "content": prompt},
         ],
         temperature=1,
     )
-
     report = response.choices[0].message.content
 
-    st.subheader("📄 AI-Generated Business Report")
+    st.subheader("📄 AI-Generated Business Summary")
     st.write(report)
 
-    with open("powerbi_auto_report.txt", "w", encoding="utf-8") as f:
+    with open("business_summary.txt", "w", encoding="utf-8") as f:
         f.write(report)
-
-    st.success("Report saved to powerbi_auto_report.txt ✅")
+    st.success("💾 Report saved to business_summary.txt")
