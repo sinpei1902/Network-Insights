@@ -1,2 +1,6 @@
 streamlit
 openai
+msal
+requests
+pandas
+numpy
