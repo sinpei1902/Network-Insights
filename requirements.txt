@@ -6,4 +6,8 @@ pandas
 numpy
 tabulate
 msal
+<<<<<<< Updated upstream
 supabase
+=======
+feedparser
+>>>>>>> Stashed changes
