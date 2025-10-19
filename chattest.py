@@ -219,6 +219,24 @@ import queue
 import database
 import warnings
 
+from openai import AzureOpenAI
+import json
+
+# Load Azure OpenAI credentials
+azure = st.secrets
+AZURE_OPENAI_ENDPOINT = azure["AZURE_OPENAI_ENDPOINT"]
+AZURE_OPENAI_KEY = azure["AZURE_OPENAI_KEY"]
+AZURE_OPENAI_DEPLOYMENT = azure["AZURE_OPENAI_DEPLOYMENT"]
+
+# Azure OpenAI client
+client = AzureOpenAI(
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    api_key=AZURE_OPENAI_KEY,
+    api_version = "2024-05-01-preview"
+)
+
+
+
 # ======================================================
 # CONFIG & GLOBALS
 # ======================================================
@@ -355,6 +373,39 @@ def connect_to_room(room_id, username):
     print(f"👤 {username} joined room {room_id}")
 
 
+#detect and translate
+def detect_and_translate_tone(message: str) -> tuple[str, str]:
+    """
+    Detect language and translate while keeping the sender's tone and intention.
+    Returns (detected_language, translated_message)
+    """
+    prompt = f"""
+    You are a skilled translator who preserves tone, emotion, and intention.
+    Detect the language of this message and, if not English,
+    translate it naturally while keeping the sender's tone and intention intact.
+
+    Respond strictly in JSON:
+    {{
+        "language": "Detected language name",
+        "translated": "Final translated English text"
+    }}
+
+    Message: {message}
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model=AZURE_OPENAI_DEPLOYMENT,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        data = json.loads(response.choices[0].message.content)
+        return data.get("language", "English"), data.get("translated", message)
+    except Exception as e:
+        print("⚠️ Translation failed:", e)
+        return "English", message
+
+
 # ======================================================
 # CHAT RENDER & SEND
 # ======================================================
@@ -420,17 +471,26 @@ def render_chat(username):
     if st.button("Send Message"):
         if msg.strip():
             if sio.connected:
+                # 🧠 Auto-translate before sending
+                lang, translated = detect_and_translate_tone(msg.strip())
+                if lang != "English":
+                    st.toast(f"🌐 Detected {lang}. Translated preserving tone.")
+                else:
+                    translated = msg.strip()
+
                 sio.emit("send_message", {
                     "room_id": room_id,
                     "sender": username,
-                    "content": msg.strip()
+                    "content": translated
                 })
+
                 st.session_state["messages"].append(
-                    {"sender": username, "content": msg.strip(),
-                     "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")}
+                    {"sender": username, "content": translated,
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")}
                 )
             else:
                 st.warning("⚠️ Chat server not connected. Try rejoining the room.")
+
         else:
             st.warning("Cannot send empty message.")
 

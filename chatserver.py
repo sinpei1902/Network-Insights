@@ -94,8 +94,56 @@ from flask_socketio import SocketIO, emit, join_room
 import database
 import time
 
+from openai import AzureOpenAI
+import json, os
+
+# --- Azure OpenAI setup ---
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT") or "your_default_endpoint"
+AZURE_OPENAI_KEY = os.getenv("AZURE_OPENAI_KEY") or "your_default_key"
+AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT") or "your_deployment_name"
+
+client = AzureOpenAI(
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    api_key=AZURE_OPENAI_KEY,
+    api_version = "2024-05-01-preview"
+)
+
+
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+
+def summarize_chat(room_id):
+    """Summarize chat with topic, solutions, and next steps."""
+    try:
+        messages = database.get_messages(room_id)
+        if not messages:
+            return "No messages to summarize."
+
+        chat_text = "\n".join([f"{m['sender']}: {m['content']}" for m in messages])
+
+        prompt = f"""
+        Summarize this chat clearly.
+        Include:
+        1. **Main topic of discussion**
+        2. **Possible solutions or ideas discussed**
+        3. **Next steps or potential future implementations**
+
+        Chat transcript:
+        {chat_text}
+        """
+
+        response = client.chat.completions.create(
+            model=AZURE_OPENAI_DEPLOYMENT,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        summary = response.choices[0].message.content.strip()
+        database.save_chat_summary(room_id, summary)
+        print(f"🧾 Summary saved for room {room_id}")
+        return summary
+    except Exception as e:
+        print(f"❌ Failed to summarize chat: {e}")
+        return None
 
 
 @socketio.on("connect")
@@ -106,6 +154,12 @@ def handle_connect():
 @socketio.on("disconnect")
 def handle_disconnect():
     print(f"❌ Client disconnected: {request.sid}")
+    # TODO: If you track user-room mapping, identify their room and check if empty
+    # Example:
+    # room_id = get_room_for_sid(request.sid)
+    # if is_room_empty(room_id):
+    #     summarize_chat(room_id)
+
 
 
 @socketio.on("join_room")
