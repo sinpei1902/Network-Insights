@@ -328,64 +328,61 @@ def app():
 if __name__ == "__main__":
     app()
 '''
-
 import streamlit as st
 import requests
 import os
 import json
 import time
 from datetime import datetime
-from streamlit_js_eval import streamlit_js_eval
 
 EXPORTS_DIR = "exports"
 os.makedirs(EXPORTS_DIR, exist_ok=True)
 
 # ======================================================
-# 🔑 Power BI Auth (Service Principal)
+# 🔑 Power BI Authentication (Service Principal)
 # ======================================================
 def get_access_token(client_id, client_secret, tenant_id):
+    """Authenticate and get Azure AD access token."""
     token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
     payload = {
         "grant_type": "client_credentials",
         "client_id": client_id,
         "client_secret": client_secret,
-        "scope": "https://analysis.windows.net/powerbi/api/.default",
+        "scope": "https://analysis.windows.net/powerbi/api/.default"
     }
     resp = requests.post(token_url, data=payload)
     resp.raise_for_status()
     return resp.json()["access_token"]
 
-
 # ======================================================
-# 📄 Export PDF via Power BI REST API
+# 📄 Power BI Export-to-File Functions
 # ======================================================
-def start_export_job(headers, workspace_id, report_id, filters=None):
+def start_export_job(headers, workspace_id, report_id):
+    """Start a Power BI PDF export job."""
     url = f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/ExportTo"
     payload = {"format": "PDF"}
-    if filters:
-        payload["powerBIReportConfiguration"] = {"filters": filters}
-
     resp = requests.post(url, headers={**headers, "Content-Type": "application/json"}, json=payload)
     if resp.status_code != 202:
-        raise RuntimeError(f"❌ Export job failed: {resp.text}")
+        raise RuntimeError(f"❌ Failed to start export job: {resp.text}")
     return resp.json()["id"]
 
-
 def poll_export_status(headers, workspace_id, report_id, job_id):
+    """Poll job until export is ready."""
     while True:
         url = f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/exports/{job_id}"
         resp = requests.get(url, headers=headers)
         resp.raise_for_status()
         data = resp.json()
         status = data.get("status")
+
         if status == "Succeeded":
             return data["resourceLocation"]
         elif status == "Failed":
-            raise RuntimeError("Power BI PDF export failed.")
+            raise RuntimeError("❌ Power BI PDF export failed.")
         time.sleep(5)
 
-
 def download_pdf(headers, download_url, filename):
+    """Download exported PDF file."""
     resp = requests.get(download_url, headers=headers)
     resp.raise_for_status()
     output_path = os.path.join(EXPORTS_DIR, filename)
@@ -393,13 +390,13 @@ def download_pdf(headers, download_url, filename):
         f.write(resp.content)
     return output_path
 
-
 # ======================================================
-# 🧠 Streamlit App
+# 🎛️ Streamlit App — Embed & Export
 # ======================================================
 def app():
-    st.title("📊 Power BI Dashboard — Filtered PDF Export")
+    st.title("📊 Power BI Dashboard — Filtered PDF Snapshot Export")
 
+    # Load secrets
     pbi = st.secrets["powerbi"]
     client_id = pbi["client_id"]
     client_secret = pbi["client_secret"]
@@ -407,37 +404,36 @@ def app():
     workspace_id = pbi["workspace_id"]
     report_id = pbi["report_id"]
 
-    # 1️⃣ Get embed URL + token
+    # Authenticate + Embed
+    st.info("🔑 Authenticating with Power BI...")
     access_token = get_access_token(client_id, client_secret, tenant_id)
     headers = {"Authorization": f"Bearer {access_token}"}
 
+    # Get report info
     report_info = requests.get(
         f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}",
-        headers=headers,
+        headers=headers
     ).json()
     embed_url = report_info["embedUrl"]
 
+    # Generate embed token
     token_resp = requests.post(
         f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/GenerateToken",
         headers={**headers, "Content-Type": "application/json"},
-        json={"accessLevel": "View"},
+        json={"accessLevel": "View"}
     ).json()
     embed_token = token_resp["token"]
 
-    # 2️⃣ Embed HTML with Filter Capture
+    # Embed dashboard
+    st.markdown("### 📈 Power BI Embedded Report")
     html_code = f"""
     <!DOCTYPE html>
     <html>
       <head>
-        <meta charset="UTF-8" />
         <script src="https://cdn.jsdelivr.net/npm/powerbi-client@latest/dist/powerbi.min.js"></script>
       </head>
-      <body>
-        <div style="margin-bottom:10px">
-          <button id="btnExport" style="padding:8px 14px;">📤 Capture Current Filters</button>
-        </div>
+      <body style="font-family:sans-serif">
         <div id="reportContainer" style="height:800px;width:100%;border:1px solid #ccc;"></div>
-
         <script>
           const models = window['powerbi-client'].models;
           const report = powerbi.embed(
@@ -447,72 +443,41 @@ def app():
               id: '{report_id}',
               embedUrl: '{embed_url}',
               accessToken: '{embed_token}',
-              tokenType: models.TokenType.Embed
+              tokenType: models.TokenType.Embed,
+              settings: {{
+                panes: {{
+                  filters: {{ visible: true }},
+                  pageNavigation: {{ visible: true }}
+                }}
+              }}
             }}
           );
-
-          document.getElementById("btnExport").onclick = async () => {{
-            try {{
-              const filters = await report.getFilters();
-              console.log("DEBUG filters", filters);
-              alert(JSON.stringify(filters, null, 2));
-
-              window.parent.postMessage({{
-                type: "FROM_POWERBI_FILTERS",
-                payload: JSON.stringify(filters)
-              }}, "*");
-              alert("✅ Filters sent to Streamlit!");
-            }} catch (e) {{
-              alert("❌ Failed to get filters. See console.");
-              console.error(e);
-            }}
-          }};
         </script>
       </body>
     </html>
     """
-
     st.components.v1.html(html_code, height=870, scrolling=True)
 
-    # 3️⃣ Capture filters from iframe
-    filters_json = streamlit_js_eval(
-        js_expressions=[
-            """
-            new Promise((resolve) => {
-              window.addEventListener('message', (event) => {
-                if (event.data && event.data.type === 'FROM_POWERBI_FILTERS') {
-                  resolve(event.data.payload);
-                }
-              });
-            })
-            """
-        ],
-        key="filters_listener",
-        want_output=True,
-    )
+    st.info("💡 Apply filters in the dashboard, then click the button below to export that filtered view as a PDF snapshot.")
 
-    # 4️⃣ Show and save filters locally
-    if filters_json:
-        try:
-            if isinstance(filters_json, list) and len(filters_json) > 0:
-                filters_json = filters_json[0]
-            filters = json.loads(filters_json)
-            st.json(filters)
-            st.session_state["filters_payload"] = filters
-            st.success("✅ Captured filters. You can now export filtered PDF.")
-        except Exception as e:
-            st.error(f"Failed to parse filters: {e}")
-            st.write("Raw filters_json:", filters_json)
-
-    # 5️⃣ Export filtered PDF
+    # Export button
     if st.button("📄 Generate Filtered PDF Snapshot"):
-        filters = st.session_state.get("filters_payload")
         try:
-            job_id = start_export_job(headers, workspace_id, report_id, filters)
+            job_id = start_export_job(headers, workspace_id, report_id)
+            st.write("⏳ Export job started. Polling status...")
             download_url = poll_export_status(headers, workspace_id, report_id, job_id)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"PowerBI_Filtered_{timestamp}.pdf"
             path = download_pdf(headers, download_url, filename)
             st.success(f"✅ Export complete! Saved to: {path}")
+            with open(path, "rb") as f:
+                st.download_button("⬇️ Download PDF", f, file_name=filename)
         except Exception as e:
             st.error(f"❌ Export failed: {e}")
+
+# ======================================================
+# 🚀 Run standalone
+# ======================================================
+if __name__ == "__main__":
+    app()
+
