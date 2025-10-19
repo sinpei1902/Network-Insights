@@ -7,7 +7,8 @@ PAGES = {
     "1️⃣ Export Power BI Dashboard": "test",
     "2️⃣ Generate Business Report": "businessreport",
     "3. News updates": "news",
-    "4. Graphs": "graphs"
+    "4. Graphs": "graphs",
+    "5. Chat": "chattest"
 }
 
 st.sidebar.title("Navigation")
