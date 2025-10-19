@@ -1,9 +1,11 @@
-import streamlit as st
+'''import streamlit as st
 import json
 import requests
 import database
 import exportdata
 from exportdata import export_filtered_data
+import os
+from supabase import create_client
 
 # ============================================================
 # 🔑 POWER BI AUTH / EMBED
@@ -58,6 +60,7 @@ def app():
     filters = job["filters"]
 
     embed_token, embed_url = get_embed_info(client_id, client_secret, tenant_id, workspace_id, report_id)
+    
 
     # ============================================================
     # 💡 FRONTEND EMBED + EXPORT HANDLER
@@ -153,7 +156,7 @@ def app():
       </body>
     </html>
     """
-
+    
     exported_data = st.components.v1.html(html_code, height=870, scrolling=True)
 
     # ============================================================
@@ -173,5 +176,343 @@ def app():
 
 if __name__ == "__main__":
     app()
+'''
+
+'''import streamlit as st
+import requests
+import os
+from supabase import create_client
+
+# ======================================================
+# 🔑 POWER BI AUTHENTICATION (Service Principal)
+# ======================================================
+def get_access_token(client_id, client_secret, tenant_id):
+    """Get Azure AD token for Power BI REST API."""
+    token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+    payload = {
+        "grant_type": "client_credentials",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "scope": "https://analysis.windows.net/powerbi/api/.default"
+    }
+    resp = requests.post(token_url, data=payload)
+    resp.raise_for_status()
+    return resp.json()["access_token"]
 
 
+def get_embed_info(client_id, client_secret, tenant_id, workspace_id, report_id):
+    """Fetch Power BI embed URL + token."""
+    access_token = get_access_token(client_id, client_secret, tenant_id)
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    # Get Embed URL
+    report_resp = requests.get(
+        f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}",
+        headers=headers
+    )
+    report_resp.raise_for_status()
+    embed_url = report_resp.json()["embedUrl"]
+
+    # Generate Embed Token
+    token_resp = requests.post(
+        f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/GenerateToken",
+        headers={**headers, "Content-Type": "application/json"},
+        json={"accessLevel": "View"}
+    )
+    token_resp.raise_for_status()
+    embed_token = token_resp.json()["token"]
+    return embed_url, embed_token
+
+
+# ======================================================
+# 🎛️ STREAMLIT APP: Power BI Embed + Export ZIP
+# ======================================================
+def app():
+    st.title("📊 Power BI Dashboard — Export All Visuals as CSV (ZIP)")
+
+    pbi = st.secrets["powerbi"]
+    client_id = pbi["client_id"]
+    client_secret = pbi["client_secret"]
+    tenant_id = pbi["tenant_id"]
+    workspace_id = pbi["workspace_id"]
+    report_id = pbi["report_id"]
+
+    embed_url, embed_token = get_embed_info(client_id, client_secret, tenant_id, workspace_id, report_id)
+
+    # ======================================================
+    # 💡 FRONTEND HTML (with JSZIP for zipping CSVs)
+    # ======================================================
+    html_code = f"""
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <script src="https://cdn.jsdelivr.net/npm/powerbi-client@latest/dist/powerbi.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+      </head>
+      <body style="font-family:sans-serif">
+        <div style="display:flex;gap:10px;margin-bottom:10px;">
+          <button id="btnExport" style="padding:8px 16px;">📤 Export All Visuals → ZIP</button>
+        </div>
+        <div id="reportContainer" style="height:800px;width:100%;border:1px solid #ccc;"></div>
+
+        <script>
+        document.addEventListener("DOMContentLoaded", async function() {{
+          const models = window['powerbi-client'].models;
+          const embedConfig = {{
+            type: 'report',
+            id: '{report_id}',
+            embedUrl: '{embed_url}',
+            accessToken: '{embed_token}',
+            tokenType: models.TokenType.Embed,
+            settings: {{
+              panes: {{
+                filters: {{ visible: true }},
+                pageNavigation: {{ visible: true }}
+              }}
+            }}
+          }};
+
+          const report = powerbi.embed(document.getElementById('reportContainer'), embedConfig);
+
+          // 🔽 Export all visuals → ZIP
+          document.getElementById("btnExport").onclick = async () => {{
+            const zip = new JSZip();
+            let exportedCount = 0;
+
+            try {{
+              const pages = await report.getPages();
+              for (const page of pages) {{
+                const visuals = await page.getVisuals();
+                for (const v of visuals) {{
+                  try {{
+                    const data = await v.exportData(models.ExportDataType.Summarized);
+                    const fileName = 
+                      `${{page.displayName || page.name}}_${{v.title || v.name}}`
+                      .replace(/[\\/:*?"<>|]/g, "_") + ".csv";
+                    zip.file(fileName, data.data);
+                    exportedCount++;
+                  }} catch (err) {{
+                    console.warn("⚠️ Skipped visual:", v.title);
+                  }}
+                }}
+              }}
+
+              if (exportedCount === 0) {{
+                alert("⚠️ No exportable visuals found.");
+                return;
+              }}
+
+              const blob = await zip.generateAsync({{ type: "blob" }});
+              const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+              saveAs(blob, `PowerBI_Export_${{timestamp}}.zip`);
+              alert(`✅ Exported ${{exportedCount}} visuals as CSV (zipped).`);
+            }} catch (error) {{
+              console.error("❌ Export failed:", error);
+              alert("❌ Export failed. See console for details.");
+            }}
+          }};
+        }});
+        </script>
+      </body>
+    </html>
+    """
+
+    st.components.v1.html(html_code, height=870, scrolling=True)
+
+    st.info("💡 Click the '📤 Export All Visuals → ZIP' button in the embedded report to download all visuals as CSV inside one ZIP file.")
+
+# ======================================================
+# 🚀 RUN STANDALONE
+# ======================================================
+if __name__ == "__main__":
+    app()
+'''
+
+import streamlit as st
+import requests
+import os
+import json
+import time
+from datetime import datetime
+from streamlit_js_eval import streamlit_js_eval
+
+EXPORTS_DIR = "exports"
+os.makedirs(EXPORTS_DIR, exist_ok=True)
+
+# ======================================================
+# 🔑 Power BI Auth (Service Principal)
+# ======================================================
+def get_access_token(client_id, client_secret, tenant_id):
+    token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+    payload = {
+        "grant_type": "client_credentials",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "scope": "https://analysis.windows.net/powerbi/api/.default",
+    }
+    resp = requests.post(token_url, data=payload)
+    resp.raise_for_status()
+    return resp.json()["access_token"]
+
+
+# ======================================================
+# 📄 Export PDF via Power BI REST API
+# ======================================================
+def start_export_job(headers, workspace_id, report_id, filters=None):
+    url = f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/ExportTo"
+    payload = {"format": "PDF"}
+    if filters:
+        payload["powerBIReportConfiguration"] = {"filters": filters}
+
+    resp = requests.post(url, headers={**headers, "Content-Type": "application/json"}, json=payload)
+    if resp.status_code != 202:
+        raise RuntimeError(f"❌ Export job failed: {resp.text}")
+    return resp.json()["id"]
+
+
+def poll_export_status(headers, workspace_id, report_id, job_id):
+    while True:
+        url = f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/exports/{job_id}"
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        status = data.get("status")
+        if status == "Succeeded":
+            return data["resourceLocation"]
+        elif status == "Failed":
+            raise RuntimeError("Power BI PDF export failed.")
+        time.sleep(5)
+
+
+def download_pdf(headers, download_url, filename):
+    resp = requests.get(download_url, headers=headers)
+    resp.raise_for_status()
+    output_path = os.path.join(EXPORTS_DIR, filename)
+    with open(output_path, "wb") as f:
+        f.write(resp.content)
+    return output_path
+
+
+# ======================================================
+# 🧠 Streamlit App
+# ======================================================
+def app():
+    st.title("📊 Power BI Dashboard — Filtered PDF Export")
+
+    pbi = st.secrets["powerbi"]
+    client_id = pbi["client_id"]
+    client_secret = pbi["client_secret"]
+    tenant_id = pbi["tenant_id"]
+    workspace_id = pbi["workspace_id"]
+    report_id = pbi["report_id"]
+
+    # 1️⃣ Get embed URL + token
+    access_token = get_access_token(client_id, client_secret, tenant_id)
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    report_info = requests.get(
+        f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}",
+        headers=headers,
+    ).json()
+    embed_url = report_info["embedUrl"]
+
+    token_resp = requests.post(
+        f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/GenerateToken",
+        headers={**headers, "Content-Type": "application/json"},
+        json={"accessLevel": "View"},
+    ).json()
+    embed_token = token_resp["token"]
+
+    # 2️⃣ Embed HTML with Filter Capture
+    html_code = f"""
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+        <script src="https://cdn.jsdelivr.net/npm/powerbi-client@latest/dist/powerbi.min.js"></script>
+      </head>
+      <body>
+        <div style="margin-bottom:10px">
+          <button id="btnExport" style="padding:8px 14px;">📤 Capture Current Filters</button>
+        </div>
+        <div id="reportContainer" style="height:800px;width:100%;border:1px solid #ccc;"></div>
+
+        <script>
+          const models = window['powerbi-client'].models;
+          const report = powerbi.embed(
+            document.getElementById('reportContainer'),
+            {{
+              type: 'report',
+              id: '{report_id}',
+              embedUrl: '{embed_url}',
+              accessToken: '{embed_token}',
+              tokenType: models.TokenType.Embed
+            }}
+          );
+
+          document.getElementById("btnExport").onclick = async () => {{
+            try {{
+              const filters = await report.getFilters();
+              console.log("DEBUG filters", filters);
+              alert(JSON.stringify(filters, null, 2));
+
+              window.parent.postMessage({{
+                type: "FROM_POWERBI_FILTERS",
+                payload: JSON.stringify(filters)
+              }}, "*");
+              alert("✅ Filters sent to Streamlit!");
+            }} catch (e) {{
+              alert("❌ Failed to get filters. See console.");
+              console.error(e);
+            }}
+          }};
+        </script>
+      </body>
+    </html>
+    """
+
+    st.components.v1.html(html_code, height=870, scrolling=True)
+
+    # 3️⃣ Capture filters from iframe
+    filters_json = streamlit_js_eval(
+        js_expressions=[
+            """
+            new Promise((resolve) => {
+              window.addEventListener('message', (event) => {
+                if (event.data && event.data.type === 'FROM_POWERBI_FILTERS') {
+                  resolve(event.data.payload);
+                }
+              });
+            })
+            """
+        ],
+        key="filters_listener",
+        want_output=True,
+    )
+
+    # 4️⃣ Show and save filters locally
+    if filters_json:
+        try:
+            if isinstance(filters_json, list) and len(filters_json) > 0:
+                filters_json = filters_json[0]
+            filters = json.loads(filters_json)
+            st.json(filters)
+            st.session_state["filters_payload"] = filters
+            st.success("✅ Captured filters. You can now export filtered PDF.")
+        except Exception as e:
+            st.error(f"Failed to parse filters: {e}")
+            st.write("Raw filters_json:", filters_json)
+
+    # 5️⃣ Export filtered PDF
+    if st.button("📄 Generate Filtered PDF Snapshot"):
+        filters = st.session_state.get("filters_payload")
+        try:
+            job_id = start_export_job(headers, workspace_id, report_id, filters)
+            download_url = poll_export_status(headers, workspace_id, report_id, job_id)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"PowerBI_Filtered_{timestamp}.pdf"
+            path = download_pdf(headers, download_url, filename)
+            st.success(f"✅ Export complete! Saved to: {path}")
+        except Exception as e:
+            st.error(f"❌ Export failed: {e}")
