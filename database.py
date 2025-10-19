@@ -41,16 +41,16 @@ def modify_job(username,new_job):
 
 # File management
 
-def add_file_to_db(username, output_path):
+def add_file_to_db(username, output_path, filename):
     #1. upload to supabase storage
-    storage_path = f"{username}/{os.path.basename(output_path)}"
+    storage_path = f"{username}/{os.path.basename(filename)}"
     with open(output_path, "rb") as f:
         supabase.storage.from_("pdfs").upload(storage_path, f)
 
     #2. save file path in database
     supabase.table("user_files").insert({
         "username": username,
-        "file_name": os.path.basename(output_path),
+        "file_name": filename,
         "file_path": storage_path
     }).execute()
 

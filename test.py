@@ -5,6 +5,7 @@ import io
 import json
 import os
 import database
+from datetime import datetime
 
 # =====================
 # 🔐 CONFIGURATION
@@ -106,7 +107,7 @@ def poll_export_status(headers, job_id):
             time.sleep(5)
 
 
-def download_exported_pdf(headers, download_url, output_path="dashboard_export.pdf"):
+def download_exported_pdf(headers, download_url, filename, output_path="dashboard_export.pdf"):
     """Download the exported Power BI report PDF."""
     print(f"⬇️ Downloading PDF from {download_url} ...")
     pdf_data = requests.get(download_url, headers=headers)
@@ -117,9 +118,9 @@ def download_exported_pdf(headers, download_url, output_path="dashboard_export.p
     with open(output_path, "wb") as f:
         f.write(pdf_data.content)
 
-    database.add_file_to_db(st.session_state["username"],output_path)
+    database.add_file_to_db(st.session_state["username"],output_path,filename)
 
-    print(f"🎉 Report successfully saved as {output_path}")
+    st.write(f"🎉 Report successfully saved as {filename}")
     
 
 
@@ -130,7 +131,9 @@ def app(filters=None):
 
     job_id = start_export_job(headers, filters)
     download_url = poll_export_status(headers, job_id)
-    download_exported_pdf(headers, download_url)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"report_{timestamp}.txt"
+    download_exported_pdf(headers, download_url,filename)
 
 
 if __name__ == "__main__": # only runs when called directly
