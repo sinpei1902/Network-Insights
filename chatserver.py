@@ -123,9 +123,32 @@ def handle_join_room(data):
     emit("system_message",
          {"content": f"{username} joined the room."},
          room=room_id, include_self=False)
-
-
 @socketio.on("send_message")
+def handle_send_message(data):
+    room_id = data["room_id"]
+    sender = data["sender"]
+    content = data["content"]
+
+    print(f"💬 {sender} in {room_id}: {content}")
+    database.add_message(room_id, sender, content)
+
+    # Broadcast the new message
+    emit(
+        "new_message",
+        {
+            "sender": sender,
+            "content": content,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        },
+        room=room_id,
+        include_self=True,
+    )
+
+    # 🔔 Broadcast a REFRESH signal to all clients in that room
+    emit("refresh_required", {"room_id": room_id}, room=room_id)
+
+
+'''@socketio.on("send_message")
 def handle_send_message(data):
     room_id = data.get("room_id")
     sender = data.get("sender")
@@ -146,7 +169,7 @@ def handle_send_message(data):
          "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")},
         room=room_id,
         include_self=False,
-    )
+    )'''
 
 
 if __name__ == "__main__":

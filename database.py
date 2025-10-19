@@ -119,14 +119,33 @@ def create_room(room_name, is_group=False):
 def add_user_to_room(room_id, username):
     supabase.table("room_members").insert({"room_id": room_id, "username": username}).execute()
 
+import httpx, time
+from supabase import create_client
+
 def get_user_rooms(username):
-    # Get all rooms the user belongs to
-    result = supabase.table("room_members").select("room_id").eq("username", username).execute()
-    if not result.data:
+    url = st.secrets["supabase"]["url"]
+    key = st.secrets["supabase"]["anon_key"]
+    supabase = create_client(url, key)
+
+    try:
+        result = supabase.table("room_members").select("room_id").eq("username", username).execute()
+        if not result.data:
+            return []
+        room_ids = [r["room_id"] for r in result.data]
+        if not room_ids:
+            return []
+        for _ in range(3):
+            try:
+                rooms = supabase.table("rooms").select("*").in_("id", room_ids).execute()
+                return rooms.data
+            except httpx.RemoteProtocolError:
+                print("⚠️ Supabase disconnected — retrying...")
+                time.sleep(1)
+        st.error("❌ Could not retrieve rooms. Supabase connection unstable.")
         return []
-    room_ids = [r["room_id"] for r in result.data]
-    rooms = supabase.table("rooms").select("*").in_("id", room_ids).execute()
-    return rooms.data
+    except Exception as e:
+        print(f"❌ Error fetching rooms: {e}")
+        return []
 
 def add_message(room_id, sender, content):
     supabase.table("messages").insert({

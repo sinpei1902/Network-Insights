@@ -257,6 +257,12 @@ def new_message(data):
 @sio.event
 def system_message(data):
     INCOMING_QUEUE.put({"type": "system", "data": data})
+    
+@sio.event
+def refresh_required(data):
+    print("♻️ Refresh signal received for room:", data.get("room_id"))
+    INCOMING_QUEUE.put({"type": "refresh", "data": data})
+
 
 
 # ======================================================
@@ -358,7 +364,7 @@ def render_chat(username):
 
     # --- Process incoming events ---
     new_message_received = False
-    while not INCOMING_QUEUE.empty():
+    '''while not INCOMING_QUEUE.empty():
         event = INCOMING_QUEUE.get()
         if event["type"] == "history":
             st.session_state["messages"] = event["data"]
@@ -369,8 +375,21 @@ def render_chat(username):
             st.session_state["messages"].append(
                 {"sender": "System", "content": event["data"]["content"]}
             )
-            new_message_received = True
-
+            new_message_received = True'''
+            
+    while not INCOMING_QUEUE.empty():
+        event = INCOMING_QUEUE.get()
+        if event["type"] == "history":
+            st.session_state["messages"] = event["data"]
+        elif event["type"] == "new":
+            st.session_state["messages"].append(event["data"])
+        elif event["type"] == "system":
+            st.session_state["messages"].append(
+                {"sender": "System", "content": event["data"]["content"]}
+            )
+        elif event["type"] == "refresh":
+            st.rerun()  # ✅ Immediately rerun the Streamlit script
+            
     # --- Display chat messages ---
     chat_box = st.container()
     for msg in st.session_state["messages"]:
