@@ -360,13 +360,23 @@ def get_access_token(client_id, client_secret, tenant_id):
 # 📄 Power BI Export Job
 # ======================================================
 def start_export_job(headers, workspace_id, report_id, filters=None):
+    """Start Power BI export job with optional filters."""
     url = f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/ExportTo"
     payload = {"format": "PDF"}
+
     if filters:
         payload["powerBIReportConfiguration"] = {"filters": filters}
-    resp = requests.post(url, headers={**headers, "Content-Type": "application/json"}, json=payload)
+
+    # 🩹 Fix: make sure all header values are strings
+    safe_headers = {k: str(v) for k, v in headers.items()}
+    safe_headers["Content-Type"] = "application/json"
+
+    st.write("🚀 Exporting with filters:", payload)
+    resp = requests.post(url, headers=safe_headers, json=payload)
+
     if resp.status_code != 202:
-        raise RuntimeError(f"❌ Export failed: {resp.text}")
+        raise RuntimeError(f"❌ Export failed ({resp.status_code}): {resp.text}")
+
     return resp.json()["id"]
 
 
