@@ -122,9 +122,7 @@ def download_exported_pdf(headers, download_url, filename, output_path="dashboar
 
     st.write(f"🎉 Report successfully saved as {filename}")
     
-
-
-def app(filters=None):
+def export(filters=None):
     """Main app logic for exporting Power BI report."""
     access_token = get_access_token()
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -134,6 +132,11 @@ def app(filters=None):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"report_{timestamp}.pdf"
     download_exported_pdf(headers, download_url,filename)
+
+def app():
+    if st.button("Export Power BI Dashboard for Analysis"):
+        export()
+    
 
 
 if __name__ == "__main__": # only runs when called directly
