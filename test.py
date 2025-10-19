@@ -132,7 +132,7 @@ def app(filters=None):
     job_id = start_export_job(headers, filters)
     download_url = poll_export_status(headers, job_id)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"report_{timestamp}.txt"
+    filename = f"report_{timestamp}.pdf"
     download_exported_pdf(headers, download_url,filename)
 
 

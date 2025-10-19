@@ -54,6 +54,21 @@ def add_file_to_db(username, output_path, filename):
         "file_path": storage_path
     }).execute()
 
+def get_files(username):
+    result = supabase.table("user_files").select("*").eq("username", username).execute()
+    return result.data
+
+def save_file_to_local(filename, output_path="dashboard_export.pdf"):
+    file = supabase.table("user_files").select("*").eq("username", st.session_state["username"]).eq("file_name",filename).execute().data[0]
+    file_path = file["file_path"]
+    st.write(file_path)
+    response = supabase.storage.from_("pdfs").download(file_path)
+
+    # Save locally
+    with open(output_path, "wb") as f:
+        f.write(response)
+    print(f"✅ File saved locally as {output_path}")
+    return output_path
 
 
 

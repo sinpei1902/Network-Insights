@@ -10,3 +10,4 @@ supabase
 feedparser
 bcrypt
 plotly
+pdfplumber

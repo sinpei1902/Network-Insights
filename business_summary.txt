@@ -1,0 +1,40 @@
+Summary (high-level)
+- Performance is uneven month-to-month. Port Time Savings and Bunker Savings show a loose positive relationship (higher port-time savings typically co‑occur with higher bunker savings), while Arrival Accuracy jumps sharply in Apr and again from Jul–Sep. Carbon Abatement trends downward through Aug but shows a large, likely erroneous spike in Sep.
+- Key impact: months with low/zero port time savings (Mar, May, Sep) coincide with materially lower bunker savings (Mar = $0M, May = $0.87M after earlier $0.95–$1M), indicating lost fuel and emissions benefits when port efficiency drops.
+
+Key observations and likely causes
+- Port Time Savings: Strong in Jan (20%), Jun (20%), Jul (19%), Aug (18%) but zero in May and Sep. This suggests intermittent operational changes or inconsistent process adherence (berth planning, pilot scheduling, or Just‑In‑Time arrival execution).
+- Arrival Accuracy: Very low (16–20%) Jan–Mar/May–Jun, then anomalously high in Apr (100%) and sustained improvement Jul–Sep (79–82%). The Apr value and sudden step-change starting Jul warrant verification (measure definition or data feed changes).
+- Bunker Savings: Fall from $1M (Jan) → $0 (Mar) then recover modestly. Bunker savings appear sensitive to port time performance and speed/ETA management.
+- Carbon Abatement: Gradual decline Jan→Aug (0.95 → 0.27 Kt) then a large spike in Sep (5.55 Kt) that is inconsistent with other KPIs — likely a data or unit conversion error.
+
+Immediate data actions (highest priority)
+1. Validate data anomalies before operational decisions:
+   - Confirm Sep carbon abatement (5.55 Kt) and Apr arrival accuracy (100%) for calculation or ingestion errors.
+   - Check definition and measurement source changes around Apr and Jul that could explain the step changes.
+2. Reconcile port-time and bunker-savings calculations for months showing zeros (Mar, May, Sep) — verify no missing voyages or excluded segments.
+
+Operational recommendations (short-term, 30–60 days)
+1. Rapid root-cause deep dive on months with zero/low port time savings (Mar, May, Sep):
+   - Review berth/terminal performance, pilot/tug availability, and scheduling adherence.
+   - Identify whether special events (weather, strikes, port congestion) explain the drop; if not, address process failure points.
+2. Capture and scale what worked in Jun–Aug:
+   - Run a “lessons learned” workshop to document operational changes implemented in June/July that coincided with restored port time savings and bunker benefits.
+   - Standardize those practices (ETA discipline, pre-berth coordination, JIT arrival playbooks).
+3. Reinforce ETA/arrival accuracy program:
+   - If the July+ improvement is real, accelerate rollout (predictive ETAs + voyage execution playbook) to drive consistent fuel savings.
+   - If it’s a measurement artifact, correct the metric and relaunch tracking.
+
+Medium-term actions (60–180 days)
+1. Set targets and link KPIs: aim for Port Time Savings ≥15% monthly to capture typical bunker savings of ~$0.6–1.0M and carbon abatement ~0.5–1 Kt (based on observed months).
+2. Implement automated anomaly alerts in the BI pipeline for sudden KPI jumps/drops (arrival accuracy = 100%, carbon abatement >1.5x trend) to force immediate validation.
+3. Integrate voyage optimization (speed, weather routing, JIT arrival) with terminal stakeholders and commercial planning to lock in savings.
+4. Quarterly cross‑functional review (Operations, Data, Commercial, Sustainability) to reconcile KPI drivers and adjust targets.
+
+Quick win recommendations
+- Trigger immediate data validation for Sep and Apr (1–2 days).
+- Convene a one-week operational review of June–August practices and deploy the top 2 reproducible improvements fleetwide (2–4 weeks).
+- Add a dashboard alert for Port Time Savings = 0 to prompt rapid investigation of lost bunker savings.
+
+Bottom line
+Data shows clear potential: when port-time performance is restored (June–Aug) the fleet captures meaningful bunker savings and emissions reductions. However, inconsistent execution and probable data quality issues (Apr, Sep) are masking true performance and risking lost savings. Validate the anomalies, standardize the operational practices that drove the June–August improvements, and implement monitoring/alerts to sustain gains.

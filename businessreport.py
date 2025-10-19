@@ -4,6 +4,7 @@ import pdfplumber
 import re
 from openai import AzureOpenAI
 import os
+import database
 
 # ==========================
 # 📄 1️⃣ Extract KPIs from Power BI PDF
@@ -88,9 +89,36 @@ def app():
     st.title("📊 Power BI → AI Business Report")
     st.caption("Reads KPI data from a Power BI PDF export and generates insights using Azure OpenAI.")
 
-    pdf_path = "dashboard_export.pdf"
-    st.info(f"Using exported Power BI report: `{pdf_path}`")
+    select_file()
 
+def select_file():
+    files = database.get_files(st.session_state["username"])
+    print(files)
+    filenames=[]
+    if files:
+        for file in files:
+            filenames.append(file["file_name"])
+        # Extract filenames for display
+        #filenames = [file["file_name"] for file in files]
+
+        # Let user pick one file
+        filename = st.radio(
+            "Select file to generate report:",
+            filenames,
+            index=0  # optional: pre-select first item
+        )
+        st.success(f"Selected file: {filename}")
+
+    else:
+        st.warning("No files found for your account.")
+        filename = None
+
+    if st.button("Generate"):
+        output_path = database.save_file_to_local(filename)
+        st.info(f"Using exported Power BI report: `{filename}`")
+        run(output_path)
+
+def run(pdf_path):
     # Step 1: Extract KPIs
     try:
         df = extract_kpi_from_pdf(pdf_path)
