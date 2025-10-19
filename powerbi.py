@@ -360,24 +360,40 @@ def get_access_token(client_id, client_secret, tenant_id):
 # 📄 Power BI Export Job
 # ======================================================
 def start_export_job(headers, workspace_id, report_id, filters=None):
-    """Start Power BI export job with optional filters."""
+    """Start Power BI export job (PDF) with optional filters."""
     url = f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/ExportTo"
     payload = {"format": "PDF"}
 
+    # Include filters if provided
     if filters:
         payload["powerBIReportConfiguration"] = {"filters": filters}
 
-    # 🩹 Fix: make sure all header values are strings
-    safe_headers = {k: str(v) for k, v in headers.items()}
-    safe_headers["Content-Type"] = "application/json"
+    # 🩹 Always ensure we have a proper 'Bearer <token>' string
+    token = headers.get("Authorization", "")
+    if isinstance(token, bool) or not isinstance(token, str):
+        # Try to rebuild token if malformed
+        token = f"Bearer {headers.get('access_token', '')}" if "access_token" in headers else ""
+    if not token.startswith("Bearer "):
+        token = f"Bearer {token}"
 
-    st.write("🚀 Exporting with filters:", payload)
+    # 🩹 Now rebuild headers cleanly with correct types
+    safe_headers = {
+        "Authorization": str(token),
+        "Content-Type": "application/json"
+    }
+
+    print("🚀 Starting export job to Power BI...")
+    print("Payload:", json.dumps(payload, indent=2))
+
     resp = requests.post(url, headers=safe_headers, json=payload)
 
     if resp.status_code != 202:
         raise RuntimeError(f"❌ Export failed ({resp.status_code}): {resp.text}")
 
-    return resp.json()["id"]
+    job_id = resp.json()["id"]
+    print(f"✅ Export job started (ID: {job_id})")
+    return job_id
+
 
 
 def poll_export_status(headers, workspace_id, report_id, job_id):
@@ -428,6 +444,7 @@ def app():
 
     access_token = get_access_token(client_id, client_secret, tenant_id)
     headers = {"Authorization": f"Bearer {access_token}"}
+
 
     # Get embed info
     report_info = requests.get(
@@ -518,6 +535,7 @@ def app():
 
     if st.button("📄 Export PDF Snapshot"):
         try:
+            st.write("DEBUG headers:", headers)
             job_id = start_export_job(headers, workspace_id, report_id, filters=parsed_filters)
             st.write("⏳ Waiting for Power BI export to complete...")
             download_url = poll_export_status(headers, workspace_id, report_id, job_id)
