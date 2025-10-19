@@ -109,7 +109,7 @@ def plot_donut_chart(value, label, color):
 # 🚀 STREAMLIT APP
 # ======================
 def app():
-    st.set_page_config(page_title="AI KPI Dashboard", layout="wide")
+    #st.set_page_config(page_title="AI KPI Dashboard", layout="wide")
     st.title("📊 AI-Generated KPI Dashboard")
     st.caption("Styled report automatically generated from Power BI data via Azure OpenAI.")
 
