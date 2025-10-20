@@ -270,100 +270,103 @@ def get_embed_info(client_id, client_secret, tenant_id, workspace_id, report_id)
 # 🎛️ STREAMLIT APP: Power BI Embed + Export ZIP
 # ======================================================
 def app():
-    st.title("📊 Power BI Dashboard — Export All Visuals as CSV (ZIP)")
+    tab1,tab2 = st.tabs(["Step 1. 📊 Power BI Dashboard","Step 2. 📥 Export All Visuals as CSV (ZIP)"])
+    with tab1:
+        st.title("📊 Power BI Dashboard — Export All Visuals as CSV (ZIP)")
 
-    pbi = st.secrets["powerbi"]
-    client_id = pbi["client_id"]
-    client_secret = pbi["client_secret"]
-    tenant_id = pbi["tenant_id"]
-    workspace_id = pbi["workspace_id"]
-    report_id = pbi["report_id"]
+        pbi = st.secrets["powerbi"]
+        client_id = pbi["client_id"]
+        client_secret = pbi["client_secret"]
+        tenant_id = pbi["tenant_id"]
+        workspace_id = pbi["workspace_id"]
+        report_id = pbi["report_id"]
 
-    embed_url, embed_token = get_embed_info(client_id, client_secret, tenant_id, workspace_id, report_id)
+        embed_url, embed_token = get_embed_info(client_id, client_secret, tenant_id, workspace_id, report_id)
 
-    # ======================================================
-    # 💡 FRONTEND HTML (with JSZIP for zipping CSVs)
-    # ======================================================
-    html_code = f"""
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <script src="https://cdn.jsdelivr.net/npm/powerbi-client@latest/dist/powerbi.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
-      </head>
-      <body style="font-family:sans-serif">
-        <div style="display:flex;gap:10px;margin-bottom:10px;">
-          <button id="btnExport" style="padding:8px 16px;">📤 Export All Visuals → ZIP</button>
-        </div>
-        <div id="reportContainer" style="height:800px;width:100%;border:1px solid #ccc;"></div>
+        # ======================================================
+        # 💡 FRONTEND HTML (with JSZIP for zipping CSVs)
+        # ======================================================
+        html_code = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <script src="https://cdn.jsdelivr.net/npm/powerbi-client@latest/dist/powerbi.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+        </head>
+        <body style="font-family:sans-serif">
+            <div style="display:flex;gap:10px;margin-bottom:10px;">
+            <button id="btnExport" style="padding:8px 16px;">📤 Export All Visuals → ZIP</button>
+            </div>
+            <div id="reportContainer" style="height:800px;width:100%;border:1px solid #ccc;"></div>
 
-        <script>
-        document.addEventListener("DOMContentLoaded", async function() {{
-          const models = window['powerbi-client'].models;
-          const embedConfig = {{
-            type: 'report',
-            id: '{report_id}',
-            embedUrl: '{embed_url}',
-            accessToken: '{embed_token}',
-            tokenType: models.TokenType.Embed,
-            settings: {{
-              panes: {{
-                filters: {{ visible: true }},
-                pageNavigation: {{ visible: true }}
-              }}
-            }}
-          }};
-
-          const report = powerbi.embed(document.getElementById('reportContainer'), embedConfig);
-
-          // 🔽 Export all visuals → ZIP
-          document.getElementById("btnExport").onclick = async () => {{
-            const zip = new JSZip();
-            let exportedCount = 0;
-
-            try {{
-              const pages = await report.getPages();
-              for (const page of pages) {{
-                const visuals = await page.getVisuals();
-                for (const v of visuals) {{
-                  try {{
-                    const data = await v.exportData(models.ExportDataType.Summarized);
-                    const fileName = 
-                      `${{page.displayName || page.name}}_${{v.title || v.name}}`
-                      .replace(/[\\/:*?"<>|]/g, "_") + ".csv";
-                    zip.file(fileName, data.data);
-                    exportedCount++;
-                  }} catch (err) {{
-                    console.warn("⚠️ Skipped visual:", v.title);
-                  }}
+            <script>
+            document.addEventListener("DOMContentLoaded", async function() {{
+            const models = window['powerbi-client'].models;
+            const embedConfig = {{
+                type: 'report',
+                id: '{report_id}',
+                embedUrl: '{embed_url}',
+                accessToken: '{embed_token}',
+                tokenType: models.TokenType.Embed,
+                settings: {{
+                panes: {{
+                    filters: {{ visible: true }},
+                    pageNavigation: {{ visible: true }}
                 }}
-              }}
+                }}
+            }};
 
-              if (exportedCount === 0) {{
-                alert("⚠️ No exportable visuals found.");
-                return;
-              }}
+            const report = powerbi.embed(document.getElementById('reportContainer'), embedConfig);
 
-              const blob = await zip.generateAsync({{ type: "blob" }});
-              const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-              saveAs(blob, `PowerBI_Export_${{timestamp}}.zip`);
-              alert(`✅ Exported ${{exportedCount}} visuals as CSV (zipped).`);
-            }} catch (error) {{
-              console.error("❌ Export failed:", error);
-              alert("❌ Export failed. See console for details.");
-            }}
-          }};
-        }});
-        </script>
-      </body>
-    </html>
-    """
+            // 🔽 Export all visuals → ZIP
+            document.getElementById("btnExport").onclick = async () => {{
+                const zip = new JSZip();
+                let exportedCount = 0;
 
-    st.components.v1.html(html_code, height=870, scrolling=True)
+                try {{
+                const pages = await report.getPages();
+                for (const page of pages) {{
+                    const visuals = await page.getVisuals();
+                    for (const v of visuals) {{
+                    try {{
+                        const data = await v.exportData(models.ExportDataType.Summarized);
+                        const fileName = 
+                        `${{page.displayName || page.name}}_${{v.title || v.name}}`
+                        .replace(/[\\/:*?"<>|]/g, "_") + ".csv";
+                        zip.file(fileName, data.data);
+                        exportedCount++;
+                    }} catch (err) {{
+                        console.warn("⚠️ Skipped visual:", v.title);
+                    }}
+                    }}
+                }}
 
-    st.info("💡 Click the '📤 Export All Visuals → ZIP' button in the embedded report to download all visuals as CSV inside one ZIP file.")
-    ai_analysis_ui()
+                if (exportedCount === 0) {{
+                    alert("⚠️ No exportable visuals found.");
+                    return;
+                }}
+
+                const blob = await zip.generateAsync({{ type: "blob" }});
+                const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+                saveAs(blob, `PowerBI_Export_${{timestamp}}.zip`);
+                alert(`✅ Exported ${{exportedCount}} visuals as CSV (zipped).`);
+                }} catch (error) {{
+                console.error("❌ Export failed:", error);
+                alert("❌ Export failed. See console for details.");
+                }}
+            }};
+            }});
+            </script>
+        </body>
+        </html>
+        """
+
+        st.components.v1.html(html_code, height=870, scrolling=True)
+
+        st.info("💡 Click the '📤 Export All Visuals → ZIP' button in the embedded report to download all visuals as CSV inside one ZIP file.")
+    with tab2:
+        ai_analysis_ui()
 
 # ======================================================
 # 🚀 RUN STANDALONE
@@ -406,16 +409,27 @@ def analyse_zip_with_ai(zip_file):
         combined_summary = "\n\n".join(summaries)
 
     prompt = f"""
-You are a business intelligence analyst. 
-Below are multiple CSV datasets exported from a Power BI dashboard. 
+You are a business intelligence analyst in the maritime industry. 
+Company is PSA and has a Global Strategy.
+Below are multiple CSV datasets exported from a Power BI dashboard that may have been filtered. 
 Each CSV corresponds to a visual showing business metrics such as sales, performance, or operations.
 
-Your task:
-1. Interpret the data.
-2. Identify trends, insights, anomalies, and performance summaries.
-3. Provide actionable recommendations and an executive summary.
+The possible filters are:
+Date: 1/1/2025 - 29/09/2025
+Liner (10 in total): AZQ, BLX, CRY, DPT, EVO, GRN, NVX, OPR, SVQ, UVX
+Service (29 in total): 03J, 15P, 23I, 25Y, 2C7, 4OF, 4VV, 57M, 59H, 5RC, 89H, 989, 9NB, ALW, B5G, C0D, C7P, C8Q, D12, D9M, DF5, EO3, F6Y, HWI, I13, I2D, KP9, KQ5, L93, LGC
+Business Unit (9 in total): ANTWERP, BUSAN, DAMMAN, JAKARTA, LAEM CHABANG, MUMBAI, PANAMA CITY, SINGAPORE, TIANJIN
 
-Use structured sections (Overview, Key Metrics, Insights, Recommendations).
+
+Your task:
+1. Mention what was filtered.
+2. Interpret the data.
+3. Identify trends, insights, anomalies, and performance summaries.
+4. Provide actionable recommendations and an executive summary.
+
+Use structured sections (Filter, Overview, Key Metrics, Insights, Recommendations).
+Use dividers for better readability.
+Use business language suitable for reporting.
 
 Data Preview:
 {combined_summary}
@@ -429,11 +443,86 @@ Data Preview:
             {"role": "user", "content": prompt}
         ],
         #temperature=0.4,
-        max_completion_tokens=3000
+        max_completion_tokens=5000
     )
 
     report_text = response.choices[0].message.content
     return report_text
+
+import textwrap
+import zipfile
+import pandas as pd
+import streamlit as st
+
+def analyse_zip_with_ai_info(zip_file):
+    """Generate a concise, engaging AI dashboard summary from Power BI export ZIP."""
+    with zipfile.ZipFile(zip_file) as z:
+        csv_files = [f for f in z.namelist() if f.endswith(".csv")]
+
+        if not csv_files:
+            st.warning("⚠️ No CSV files found in the ZIP.")
+            return
+
+        summaries = []
+        for file_name in csv_files:
+            with z.open(file_name) as f:
+                try:
+                    df = pd.read_csv(f, encoding="utf-8", on_bad_lines="skip")
+                except Exception:
+                    df = pd.read_csv(f, encoding="latin1", on_bad_lines="skip")
+                preview = df.head(10).to_csv(index=False)
+                summaries.append(f"### {file_name}\n{preview}")
+
+        combined_summary = "\n\n".join(summaries)
+
+    # 🎯 AI Prompt — dashboard tone (not report-style)
+    prompt = textwrap.dedent(f"""
+        You are a business intelligence analyst in Maritime Industry.
+        Company is PSA and has a Global Strategy.
+        Create a short, dashboard-style performance summary suitable for an executive viewer.
+
+        Requirements:
+        - Be brief, insightful and visually engaging (about 5–8 short lines).
+        - Use emojis to highlight key points.
+        - Avoid long paragraphs or technical details.
+        - Focus on trends, peaks, and key takeaways.
+        - End with a one-line recommendation or next focus.
+        - Use more dividers, bullet points and have new lines for clarity.
+
+        Structure Example:
+        📊 Overview – 1 short line
+        🔢 Highlights – 3–5 key KPI trends
+        💡 Next Step – 1 short line
+
+        Data Preview:
+        {combined_summary}
+    """)
+
+    # 🧠 Azure OpenAI request
+    with st.spinner("📊 Generating dashboard summary..."):
+        response = client.chat.completions.create(
+            model=AZURE_DEPLOYMENT,
+            messages=[
+                {"role": "system", "content": "You write short, visual Power BI-style summaries."},
+                {"role": "user", "content": prompt}
+            ],
+            max_completion_tokens=2000
+        )
+
+    # 🪄 Extract and display
+    report_text = response.choices[0].message.content.strip()
+
+    # 🖼️ Render with readable font
+    st.markdown("## 📋 Executive Dashboard Summary")
+    st.markdown(
+        f"<div style='font-size:1.15rem; line-height:1.7;'>{report_text}</div>",
+        unsafe_allow_html=True
+    )
+
+    return report_text
+
+
+
 
 
 # ======================================================

@@ -41,9 +41,6 @@ def modify_job(username,new_job):
 
 # File management
 
-
-
-
 def get_files(username):
     result = supabase.table("user_files").select("*").eq("username", username).execute()
     return result.data
@@ -59,6 +56,22 @@ def save_file_to_local(filename, output_path="dashboard_export.pdf"):
         f.write(response)
     print(f"✅ File saved locally as {output_path}")
     return output_path
+
+def get_main_file(filename="main_file.pdf"):
+    #file = supabase.table("user_files").select("*").eq("file_name",filename).execute().data[0]
+    path = filename
+    response = supabase.storage.from_("exports").download(path)
+    # Save locally
+    with open(path, "wb") as f:
+        f.write(response)
+    print(f"✅ File saved locally as {path}")
+    return path
+
+def get_main_zip(filename="main_file.zip"):
+    path = filename
+    zip_bytes = supabase.storage.from_("exports").download(path)
+    return zip_bytes
+
 
 def add_file_to_db(username, output_path, filename):
     """Upload any file (PDF, CSV, ZIP) to Supabase storage and record in DB."""

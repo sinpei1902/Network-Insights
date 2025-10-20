@@ -24,14 +24,17 @@ def logIn():
         if st.button("Login"):
             if database.validate_user(username, password):
                 st.session_state["username"] = username
+                st.session_state["page"] = "home"
                 st.rerun()
             else:
                 st.error("Invalid login details.")
         if st.button("quick login - wenxi"):
             st.session_state["username"] = "wenxi"
+            st.session_state["page"] = "home"
             st.rerun()
         if st.button("quick login - sinpei"):
             st.session_state["username"] = "sinpei"
+            st.session_state["page"] = "home"
             st.rerun()
     
     elif choice == "Sign Up":

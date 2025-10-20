@@ -16,3 +16,4 @@ eventlet
 flask
 streamlit_js_eval
 streamlit-javascript
+streamlit-option-menu
