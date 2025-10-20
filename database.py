@@ -190,10 +190,10 @@ def is_user_in_room(username, room_id):
     return len(result.data) > 0
 
 def save_chat_summary(room_id, summary):
-    return supabase.table("chat_summaries").insert({
+    return supabase.table("summaries").insert({
         "room_id": room_id,
         "summary": summary,
-        "created_at": time.strftime("%Y-%m-%d %H:%M:%S")
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S")
     }).execute()
 
 

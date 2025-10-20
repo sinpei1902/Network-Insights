@@ -112,6 +112,11 @@ client = AzureOpenAI(
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
+# Track connected users per room
+active_users = {}  # room_id -> set of usernames
+user_rooms = {}    # sid -> room_id
+
+
 
 def summarize_chat(room_id):
     """Summarize chat with topic, solutions, and next steps."""
@@ -154,11 +159,24 @@ def handle_connect():
 @socketio.on("disconnect")
 def handle_disconnect():
     print(f"❌ Client disconnected: {request.sid}")
-    # TODO: If you track user-room mapping, identify their room and check if empty
-    # Example:
-    # room_id = get_room_for_sid(request.sid)
-    # if is_room_empty(room_id):
-    #     summarize_chat(room_id)
+
+    # 🔍 If you store user-room mapping in user_rooms, retrieve room_id
+    room_id = user_rooms.get(request.sid) if 'user_rooms' in globals() else None
+
+    # If you want to summarize for all disconnections (even without mapping)
+    if not room_id:
+        # Optionally: summarize all rooms or skip if you can’t find room
+        print("⚠️ No room mapping found, skipping summary trigger.")
+        return
+
+    print(f"🕒 User disconnected from {room_id}, generating summary...")
+    summary = summarize_chat(room_id)
+    if summary:
+        emit(
+            "system_message",
+            {"content": "🧾 Chat summary has been saved."},
+            room=room_id
+        )
 
 
 
@@ -166,10 +184,15 @@ def handle_disconnect():
 def handle_join_room(data):
     room_id = data["room_id"]
     username = data["username"]
+
     print(f"👤 {username} joined room {room_id}")
     join_room(room_id)
 
-    # Send history only to this user
+    # Track user-room mapping
+    active_users.setdefault(room_id, set()).add(username)
+    user_rooms[request.sid] = room_id
+
+    # Send chat history to the new user
     messages = database.get_messages(room_id)
     emit("chat_history", messages, room=request.sid)
 
@@ -177,6 +200,8 @@ def handle_join_room(data):
     emit("system_message",
          {"content": f"{username} joined the room."},
          room=room_id, include_self=False)
+
+    
 @socketio.on("send_message")
 def handle_send_message(data):
     room_id = data["room_id"]
