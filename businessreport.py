@@ -53,34 +53,71 @@ def extract_kpi_from_pdf(pdf_path: str):
 # ==========================
 # 🤖 2️⃣ Generate AI Business Report
 # ==========================
-def generate_ai_report(df, azure):
-    """Generate AI-driven summary using Azure OpenAI."""
+from openai import AzureOpenAI
+import pandas as pd
+import database  # assuming you already have this file in your project
+
+def generate_ai_report(df, azure, username):
+    """Generate a personalized AI-driven report using Azure OpenAI and user details."""
+
+    # 1️⃣ Fetch user details from database
+    user_info = database.get_info(username)
+    
+    role = user_info.get("role", "staff").title()
+    dept = user_info.get("department", "General")
+    job = user_info.get("job_title", "Employee")
+
+    # 2️⃣ Build dynamic context
+    user_context = f"""
+    User Profile:
+    - Name: {username}
+    - Role: {role}
+    - Department: {dept}
+    - Job Title: {job}
+
+    You should adapt your analysis tone and focus based on the user's background.
+    For example:
+    - If they are an executive or manager, focus on strategic summaries and decisions.
+    - If they are an analyst, focus on data trends and root cause analysis.
+    - If they are from operations, highlight process efficiency and risks.
+    - If they are from sales, focus on growth, customers, and targets.
+    """
+
+    # 3️⃣ Construct the main prompt
+    prompt = f"""
+    You are a senior operations analyst.
+    You are writing this report for: {role} in {dept}.
+    Use their professional background to tailor the level of detail and emphasis.
+
+    KPI Data (from Power BI report):
+    {df.to_markdown(index=False)}
+
+    {user_context}
+
+    Write a concise, actionable performance summary that:
+    - Identifies key trends (positive or negative)
+    - Explains potential causes or correlations
+    - Recommends 2–3 clear actions aligned with their department
+    - Uses professional tone and structured formatting
+    """
+
+    # 4️⃣ Call Azure OpenAI
     client = AzureOpenAI(
         azure_endpoint=azure["AZURE_OPENAI_ENDPOINT"],
         api_key=azure["AZURE_OPENAI_KEY"],
         api_version="2024-02-15-preview",
     )
 
-    prompt = f"""
-    You are a senior operations analyst. 
-    Using the following KPI data extracted from a Power BI report,
-    write a concise but actionable performance summary with insights and recommendations.
-
-    Data:
-    {df.to_markdown(index=False)}
-    """
-
     response = client.chat.completions.create(
         model=azure["AZURE_OPENAI_DEPLOYMENT"],
         messages=[
-            {"role": "system", "content": "You are an expert in operations analytics and reporting."},
+            {"role": "system", "content": "You are an expert business intelligence and operations analyst."},
             {"role": "user", "content": prompt},
         ],
         temperature=1,
     )
 
     return response.choices[0].message.content.strip()
-
 
 # ==========================
 # 🚀 3️⃣ Streamlit App Logic
@@ -131,8 +168,12 @@ def run(pdf_path):
     # Step 2: Generate AI Analysis
     try:
         azure = st.secrets
+
+        # ✅ Get username from Streamlit session
+        username = st.session_state.get("username", "guest")
+
         st.subheader("🧠 Generating AI Business Summary...")
-        report = generate_ai_report(df, azure)
+        report = generate_ai_report(df, azure, username)
         st.subheader("📄 AI-Generated Insights")
         st.write(report)
 
@@ -140,9 +181,14 @@ def run(pdf_path):
         with open("business_summary.txt", "w", encoding="utf-8") as f:
             f.write(report)
         st.success("💾 Report saved as business_summary.txt")
+        
+        database.save_ai_report(username, "business_summary.txt", report)
+        st.success("📤 Report uploaded to Supabase.")
+
 
     except Exception as e:
         st.error(f"❌ Failed to generate AI report: {e}")
+
 
 
 if __name__ == "__main__":

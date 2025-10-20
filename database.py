@@ -198,3 +198,28 @@ def save_chat_summary(room_id, summary):
 
 
 
+
+# 🧾 Save AI report text
+def save_ai_report(username, file_name, report_text):
+    data = {
+        "username": username,
+        "file_name": file_name,
+        "report_text": report_text,
+    }
+    result = supabase.table("ai_reports").insert(data).execute()
+    return result.data
+
+# 📄 Fetch latest AI report
+def get_latest_ai_report(username):
+    result = (
+        supabase.table("ai_reports")
+        .select("file_name, report_text, created_at")
+        .eq("username", username)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if result.data:
+        return result.data[0]
+    else:
+        return None
