@@ -339,7 +339,6 @@ from supabase import create_client
 EXPORTS_DIR = "exports"
 os.makedirs(EXPORTS_DIR, exist_ok=True)
 
-
 # ======================================================
 # 🔑 Power BI Auth (Service Principal)
 # ======================================================
@@ -355,20 +354,31 @@ def get_access_token(client_id, client_secret, tenant_id):
     resp.raise_for_status()
     return resp.json()["access_token"]
 
-
 # ======================================================
 # 📄 Power BI Export Job
 # ======================================================
 def start_export_job(headers, workspace_id, report_id, filters=None):
+    """Start Power BI export job (PDF) with optional filters."""
     url = f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/ExportTo"
     payload = {"format": "PDF"}
+
     if filters:
         payload["powerBIReportConfiguration"] = {"filters": filters}
-    resp = requests.post(url, headers={**headers, "Content-Type": "application/json"}, json=payload)
-    if resp.status_code != 202:
-        raise RuntimeError(f"❌ Export failed: {resp.text}")
-    return resp.json()["id"]
 
+    # 🧹 Force all headers to strings
+    safe_headers = {str(k): str(v) for k, v in headers.items()}
+    safe_headers["Content-Type"] = "application/json"
+
+    st.write("📦 Payload being sent:")
+    st.json(payload)
+    st.write("🧩 Safe headers:")
+    st.json(safe_headers)
+
+    resp = requests.post(url, headers=safe_headers, json=payload)
+    if resp.status_code != 202:
+        raise RuntimeError(f"❌ Export failed ({resp.status_code}): {resp.text}")
+
+    return resp.json()["id"]
 
 def poll_export_status(headers, workspace_id, report_id, job_id):
     while True:
@@ -382,15 +392,13 @@ def poll_export_status(headers, workspace_id, report_id, job_id):
             raise RuntimeError("❌ Export job failed.")
         time.sleep(5)
 
-
 def download_pdf(headers, download_url, filename):
     resp = requests.get(download_url, headers=headers)
     resp.raise_for_status()
-    output_path = os.path.join(EXPORTS_DIR, filename)
-    with open(output_path, "wb") as f:
+    path = os.path.join(EXPORTS_DIR, filename)
+    with open(path, "wb") as f:
         f.write(resp.content)
-    return output_path
-
+    return path
 
 # ======================================================
 # ☁️ Upload to Supabase
@@ -401,7 +409,6 @@ def upload_to_supabase(local_path, filename):
     with open(local_path, "rb") as f:
         supabase.storage.from_("exports").upload(filename, f, {"upsert": True})
     return True
-
 
 # ======================================================
 # 🎛️ Streamlit App
@@ -431,83 +438,72 @@ def app():
         json={"accessLevel": "View"}
     ).json()["token"]
 
-    st.markdown("### 📈 Embedded Power BI Dashboard")
-
-    # ============================================
-    # HTML + JS: Send filters via postMessage
-    # ============================================
+    # ==============================
+    # Embed Dashboard + Filter Export
+    # ==============================
     html_code = f"""
     <!DOCTYPE html>
     <html>
     <head>
-        <script src="https://cdn.jsdelivr.net/npm/powerbi-client@latest/dist/powerbi.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/powerbi-client@latest/dist/powerbi.min.js"></script>
     </head>
-    <body style="font-family:sans-serif">
-        <button id="btnSendFilters" style="padding:6px 12px;margin-bottom:8px;">📤 Send Filters to Streamlit</button>
-        <div id="reportContainer" style="height:800px;width:100%;border:1px solid #ccc;"></div>
+    <body>
+      <button id="btnSendFilters" style="padding:8px 14px;margin-bottom:10px;">📤 Send Filters to Streamlit</button>
+      <div id="reportContainer" style="height:800px;width:100%;border:1px solid #ccc;"></div>
 
-        <script>
-          const models = window['powerbi-client'].models;
-          const report = powerbi.embed(document.getElementById('reportContainer'), {{
-            type: 'report',
-            id: '{report_id}',
-            embedUrl: '{embed_url}',
-            accessToken: '{embed_token}',
-            tokenType: models.TokenType.Embed,
-            settings: {{
-              panes: {{ filters: {{ visible: true }}, pageNavigation: {{ visible: true }} }}
-            }}
-          }});
+      <script>
+        const models = window['powerbi-client'].models;
+        const report = powerbi.embed(document.getElementById('reportContainer'), {{
+          type: 'report',
+          id: '{report_id}',
+          embedUrl: '{embed_url}',
+          accessToken: '{embed_token}',
+          tokenType: models.TokenType.Embed
+        }});
 
-          document.getElementById("btnSendFilters").onclick = async () => {{
-            try {{
-              const filters = await report.getFilters();
-              window.parent.postMessage({{ type: "FROM_PBI_FILTERS", value: filters }}, "*");
-              alert("✅ Filters sent to Streamlit!");
-            }} catch (err) {{
-              alert("❌ Failed to fetch filters: " + err);
-            }}
-          }};
-        </script>
+        document.getElementById('btnSendFilters').onclick = async () => {{
+          try {{
+            const filters = await report.getFilters();
+            const filtersJson = JSON.stringify(filters);
+            window.parent.postMessage({{ type: 'STREAMLIT_FILTERS', value: filtersJson }}, '*');
+            alert('✅ Filters sent to Streamlit!');
+          }} catch (e) {{
+            alert('❌ Failed to send filters: ' + e);
+          }}
+        }};
+      </script>
     </body>
     </html>
     """
 
-    # Container
     st.components.v1.html(html_code, height=900, scrolling=True)
 
     # ============================================
-    # JS listener inside Streamlit (via st.markdown)
+    # Receive filters
     # ============================================
-    st.markdown(
-        """
-        <script>
-        window.addEventListener("message", (event) => {
-            if (event.data && event.data.type === "FROM_PBI_FILTERS") {
-                const filters = JSON.stringify(event.data.value);
-                window.parent.postMessage({type: "SET_STREAMLIT_FILTERS", value: filters}, "*");
-            }
-        });
-        </script>
-        """,
-        unsafe_allow_html=True,
+    st.markdown("### 📦 Filters JSON")
+    filters_raw = st.text_area(
+        "Paste filters JSON (auto-filled soon):",
+        value=st.session_state.get("filters_raw", ""),
+        height=150,
     )
-
-    # Simulate a bridge (we can use query params or session state)
-    filters_raw = st.text_area("📦 Paste Filters JSON (auto-filled soon):", value=st.session_state.get("filters_raw", ""), height=150)
 
     if filters_raw:
         try:
             parsed_filters = json.loads(filters_raw)
-            st.success("✅ Parsed filters detected!")
+            st.success("✅ Filters parsed successfully!")
         except Exception as e:
-            st.warning(f"⚠️ Could not parse filters: {e}")
+            st.warning(f"⚠️ Invalid filters: {e}")
             parsed_filters = None
     else:
         parsed_filters = None
 
+    # ============================================
+    # Export PDF
+    # ============================================
     if st.button("📄 Export PDF Snapshot"):
         try:
+            st.write("DEBUG headers:", headers)
             job_id = start_export_job(headers, workspace_id, report_id, filters=parsed_filters)
             st.write("⏳ Waiting for Power BI export to complete...")
             download_url = poll_export_status(headers, workspace_id, report_id, job_id)
@@ -520,8 +516,8 @@ def app():
         except Exception as e:
             st.error(f"❌ Export failed: {e}")
 
-
 # ======================================================
 if __name__ == "__main__":
     app()
+
 
