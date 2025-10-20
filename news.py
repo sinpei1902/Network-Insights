@@ -7,7 +7,7 @@ import urllib.parse
 from datetime import datetime, timedelta
 from openai import AzureOpenAI
 from businessreport import extract_kpi_from_pdf
-from test import get_access_token, start_export_job, poll_export_status, download_exported_pdf
+from powerbi import get_access_token, start_export_job, poll_export_status, download_exported_pdf
 
 
 # ======================
