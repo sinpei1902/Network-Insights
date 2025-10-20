@@ -4,7 +4,6 @@ import importlib
 
 PAGES = {
     "Account": "account",
-    "MAIN DASHBOARD": "main_dashboard.consoldashboard",
     "1️⃣ Export Power BI Dashboard": "powerbi",
     "2️⃣ Generate Business Report": "businessreport",
     "3. News updates": "news",

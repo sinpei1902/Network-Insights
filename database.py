@@ -91,9 +91,24 @@ def add_file_to_db(username, output_path, filename):
         print(f"❌ Error uploading {filename}: {e}")
         st.error(f"Error uploading {filename}: {e}")
         return False
-
-
-
+'''
+def add_file_to_db(username, local_path, filename):
+    storage_path = f"{username}/{os.path.basename(filename)}"
+    try:
+        # Upload ZIP to a specific bucket
+        with open(local_path, "rb") as f:
+            res = supabase.storage.from_("exports").upload(storage_path, f, {"upsert": True})
+        # Optionally record it in a table
+        supabase.table("user_files").insert({
+            "username": username,
+            "filename": filename,
+            "path": storage_path,
+        }).execute()
+        return True
+    except Exception as e:
+        print("Error uploading:", e)
+        return False
+'''
 
 #filters per user 
 def add_job_filter(username, job_name, filters):

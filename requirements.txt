@@ -11,3 +11,8 @@ feedparser
 bcrypt
 plotly
 pdfplumber
+socketio
+eventlet
+flask
+streamlit_js_eval
+streamlit-javascript
